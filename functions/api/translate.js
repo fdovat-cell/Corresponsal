@@ -30,11 +30,24 @@ async function translateWithDeepL(text, target, apiKey) {
   return data?.translations?.[0]?.text || null;
 }
 
-async function translateWithMyMemory(text, target) {
-  const apiUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${target}`;
+async function translateWithMyMemory(text, target, env) {
+  // Si configurás env.MYMEMORY_EMAIL (variable de entorno, gratis, sin trámite),
+  // MyMemory sube la cuota diaria de ~5.000 a ~50.000 caracteres.
+  const deParam = env?.MYMEMORY_EMAIL ? `&de=${encodeURIComponent(env.MYMEMORY_EMAIL)}` : '';
+  const apiUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${target}${deParam}`;
   const res = await fetch(apiUrl);
   const data = await res.json();
-  return data?.responseData?.translatedText || null;
+
+  // Cuando se agota la cuota gratis, MyMemory NO da un error HTTP: devuelve
+  // responseStatus != 200 y/o un texto de advertencia en mayúsculas en vez de la
+  // traducción real. Si no detectamos esto, ese aviso se mostraba como si fuera
+  // el título traducido — el bug de las mayúsculas en inglés.
+  const translated = data?.responseData?.translatedText || '';
+  const quotaExceeded = data?.responseStatus !== 200 || /MYMEMORY WARNING|QUOTA|LIMIT/i.test(translated);
+  if (quotaExceeded || !translated) {
+    throw new Error('mymemory sin cuota disponible');
+  }
+  return translated;
 }
 
 export async function onRequestGet(context) {
@@ -63,13 +76,15 @@ export async function onRequestGet(context) {
 
   if (!translatedText) {
     try {
-      translatedText = await translateWithMyMemory(text, target);
+      translatedText = await translateWithMyMemory(text, target, env);
       engine = 'mymemory';
-    } catch (e) { /* devolvemos el original abajo */ }
+    } catch (e) { /* devolvemos el original abajo, con el error marcado */ }
   }
 
   if (!translatedText) {
-    return json({ translatedText: text, error: 'sin motores de traducción disponibles' });
+    // Devolvemos el texto ORIGINAL (nunca un mensaje de error disfrazado de traducción)
+    // y marcamos el error para que el front pueda avisar en vez de mostrarlo como traducido.
+    return json({ translatedText: text, error: 'sin motores de traducción disponibles por ahora' });
   }
 
   await cacheSet(env, cacheKey, translatedText);

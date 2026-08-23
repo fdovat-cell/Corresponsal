@@ -337,7 +337,8 @@ async function translateText(text){
   const res = await fetch(`/api/translate?text=${encodeURIComponent(text)}&target=es`);
   if(!res.ok) throw new Error('translate request failed');
   const data = await res.json();
-  return data?.translatedText || text;
+  if(data.error) throw new Error(data.error); // no mostramos avisos de cuota disfrazados de traducción
+  return data.translatedText || text;
 }
 function formatWireDate(raw){
   if(!raw) return '';
@@ -373,8 +374,12 @@ function renderWire(){
     el.addEventListener('click', async () => {
       const i = parseInt(el.dataset.i, 10);
       el.textContent = 'traduciendo…';
-      try{ currentArticles[i]._translated = await translateText(currentArticles[i].title); }
-      catch(e){ currentArticles[i]._translated = currentArticles[i].title; }
+      try{
+        currentArticles[i]._translated = await translateText(currentArticles[i].title);
+      }catch(e){
+        el.textContent = 'sin cupo de traducción por ahora';
+        return; // no reemplazamos el título por nada raro
+      }
       renderWire();
     });
   });
@@ -384,13 +389,18 @@ document.getElementById('translateBtn').addEventListener('click', async () => {
   const btn = document.getElementById('translateBtn');
   if(allTranslated){ allTranslated = false; renderWire(); return; }
   btn.disabled = true; btn.textContent = 'Traduciendo…';
-  try{
-    await Promise.all(currentArticles.map(async a => {
-      if(!a._translated){ try{ a._translated = await translateText(a.title); }catch(e){ a._translated = a.title; } }
-    }));
-    allTranslated = true;
-  }catch(e){ console.error(e); }
+  let failures = 0;
+  await Promise.all(currentArticles.map(async a => {
+    if(!a._translated){
+      try{ a._translated = await translateText(a.title); }
+      catch(e){ failures++; } // dejamos el título en el idioma original, no un aviso de error
+    }
+  }));
+  allTranslated = true;
   renderWire();
+  if(failures){
+    document.getElementById('stateMsg').textContent = `Se tradujeron ${currentArticles.length - failures} de ${currentArticles.length} titulares — se agotó la cuota gratis de traducción por hoy.`;
+  }
 });
 
 /* ---- Intereses locales: búsqueda libre dentro de la ciudad ---- */
@@ -403,11 +413,22 @@ document.getElementById('interestBtn').addEventListener('click', async () => {
   const info = countryInfoFor(currentPlace.countryCode);
   const hl = info ? info.lang : 'es';
   const gl = (currentPlace.countryCode || 'US').toUpperCase();
-  const q = `${topic} ${currentPlace.displayName}`;
+  // Frase exacta entre comillas — sin esto, Google News afloja el criterio en silencio
+  // cuando no hay match y devuelve cualquier cosa (ese fue el bug "ajedrez" -> tenis).
+  const q = `"${topic}" "${currentPlace.displayName}"`;
   try{
     const data = await fetchNews(q, hl, gl);
-    const articles = data.articles || [];
-    if(!articles.length){ wire.innerHTML = '<div class="state-msg">No encontré nada puntual sobre eso. Probá con otras palabras.</div>'; return; }
+    let articles = data.articles || [];
+
+    // Filtro de relevancia: si el título no contiene ninguna palabra clave del pedido,
+    // lo descartamos — mejor mostrar pocos resultados que resultados random.
+    const keywords = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    if(keywords.length){
+      const relevant = articles.filter(a => keywords.some(k => a.title.toLowerCase().includes(k)));
+      if(relevant.length) articles = relevant;
+    }
+
+    if(!articles.length){ wire.innerHTML = `<div class="state-msg">No encontré nada específico sobre "${topic}" en ${currentPlace.displayName}. Probá con otras palabras.</div>`; return; }
     wire.innerHTML = '';
     articles.forEach(a => {
       const item = document.createElement('div');

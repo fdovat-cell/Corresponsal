@@ -379,16 +379,21 @@ async function loadPlace(query){
 
     // 3. Titulares (GDELT)
     let articles = [];
+    let newsError = null;
     try{
       const newsQuery = buildNewsQuery(displayName);
       const gdeltRes = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(newsQuery)}&mode=artlist&maxrecords=8&sort=datedesc&format=json`);
       if(gdeltRes.ok){
         const gdelt = await gdeltRes.json();
         articles = gdelt.articles || [];
+      } else {
+        newsError = `HTTP ${gdeltRes.status}`;
       }
-    }catch(e){}
+    }catch(e){
+      newsError = e.message || 'fetch falló';
+    }
 
-    renderDispatch({ displayName, country, lat: place.lat, lon: place.lon, summary, articles, query });
+    renderDispatch({ displayName, country, lat: place.lat, lon: place.lon, summary, articles, newsError, query });
     stateMsg.textContent = '';
   }catch(err){
     stateMsg.textContent = 'Error al traer los datos. Revisá la conexión e intentá de nuevo.';
@@ -396,7 +401,7 @@ async function loadPlace(query){
   }
 }
 
-function renderDispatch({displayName, country, lat, lon, summary, articles, query}){
+function renderDispatch({displayName, country, lat, lon, summary, articles, newsError, query}){
   document.getElementById('dateline').textContent =
     `${displayName.toUpperCase()} — ${new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'short',year:'numeric'})}`;
   document.getElementById('placeName').textContent = displayName;
@@ -418,6 +423,7 @@ function renderDispatch({displayName, country, lat, lon, summary, articles, quer
   };
 
   currentArticles = articles;
+  currentNewsError = newsError;
   translated = false;
   const btn = document.getElementById('translateBtn');
   btn.textContent = 'Traducir todo';
@@ -429,11 +435,16 @@ function renderDispatch({displayName, country, lat, lon, summary, articles, quer
 
 /* ============ Wire feed: original vs traducido ============ */
 let currentArticles = [];
+let currentNewsError = null;
 let translated = false;
 
 function renderWire(useTranslated){
   const wire = document.getElementById('wire');
   wire.innerHTML = '';
+  if(currentNewsError){
+    wire.innerHTML = `<div class="state-msg">No se pudieron traer los titulares — error: ${currentNewsError}</div>`;
+    return;
+  }
   if(!currentArticles.length){
     wire.innerHTML = '<div class="state-msg">No se encontraron titulares recientes para este lugar.</div>';
     return;

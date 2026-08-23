@@ -346,6 +346,13 @@ document.getElementById('placeInput').addEventListener('keydown', e => {
   if(e.key === 'Enter') document.getElementById('searchBtn').click();
 });
 
+// Convierte el nombre de un lugar en una consulta apta para GDELT:
+// saca guiones/rayas (que GDELT interpreta mal) y arma frase exacta si tiene varias palabras.
+function buildNewsQuery(name){
+  const clean = name.replace(/[-–—_]/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean.includes(' ') ? `"${clean}"` : clean;
+}
+
 async function loadPlace(query){
   stateMsg.textContent = 'Buscando…';
   dispatch.classList.remove('active');
@@ -373,7 +380,8 @@ async function loadPlace(query){
     // 3. Titulares (GDELT)
     let articles = [];
     try{
-      const gdeltRes = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(displayName)}&mode=artlist&maxrecords=8&sort=datedesc&format=json`);
+      const newsQuery = buildNewsQuery(displayName);
+      const gdeltRes = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(newsQuery)}&mode=artlist&maxrecords=8&sort=datedesc&format=json`);
       if(gdeltRes.ok){
         const gdelt = await gdeltRes.json();
         articles = gdelt.articles || [];

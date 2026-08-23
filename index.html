@@ -8,301 +8,122 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --ink:#10161D;
-    --ink-2:#161E27;
-    --ink-3:#1D2733;
-    --paper:#E7E3D8;
-    --brass:#C69A4E;
-    --teal:#5C8A80;
-    --text-light:#EDEAE1;
-    --text-dim:#8B93A0;
-    --text-dark:#1C2229;
-    --rule: rgba(230,225,210,0.14);
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:var(--ink);
-    color:var(--text-light);
-    font-family:'IBM Plex Sans', sans-serif;
-    min-height:100vh;
-  }
-  .wrap{max-width:920px;margin:0 auto;padding:0 20px 80px;}
+:root{
+  --ink:#10161D;
+  --ink-2:#161E27;
+  --ink-3:#1D2733;
+  --paper:#E7E3D8;
+  --brass:#C69A4E;
+  --teal:#5C8A80;
+  --red:#B5654F;
+  --text-light:#EDEAE1;
+  --text-dim:#8B93A0;
+  --text-dark:#1C2229;
+  --rule: rgba(230,225,210,0.14);
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--ink);color:var(--text-light);font-family:'IBM Plex Sans', sans-serif;min-height:100vh;}
+.wrap{max-width:920px;margin:0 auto;padding:0 20px 80px;}
 
-  /* ---- Departures board (favorites strip) ---- */
-  .board{
-    background:var(--ink-2);
-    border-bottom:1px solid var(--rule);
-    overflow-x:auto;
-  }
-  .board-inner{
-    max-width:920px;margin:0 auto;
-    display:flex;gap:0;
-    padding:0 20px;
-  }
-  .board-cell{
-    flex:1 0 auto;
-    min-width:150px;
-    padding:14px 18px;
-    border-right:1px solid var(--rule);
-    cursor:pointer;
-    transition:background .15s ease;
-  }
-  .board-cell:hover{background:var(--ink-3);}
-  .board-cell:first-child{padding-left:0;}
-  .board-city{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:var(--brass);
-    margin-bottom:4px;
-  }
-  .board-time{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:20px;
-    color:var(--text-light);
-    font-variant-numeric: tabular-nums;
-  }
-  .board-add{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    color:var(--text-dim);
-    padding:14px 18px;
-    align-self:center;
-  }
+/* ---- Departures board (favoritos) ---- */
+.board{background:var(--ink-2);border-bottom:1px solid var(--rule);overflow-x:auto;}
+.board-inner{max-width:920px;margin:0 auto;display:flex;gap:0;padding:0 20px;}
+.board-cell{flex:1 0 auto;min-width:150px;padding:14px 18px;border-right:1px solid var(--rule);cursor:pointer;transition:background .15s ease;position:relative;}
+.board-cell:hover{background:var(--ink-3);}
+.board-cell:first-child{padding-left:0;}
+.board-city{font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--brass);margin-bottom:4px;padding-right:14px;}
+.board-time{font-family:'IBM Plex Mono', monospace;font-size:20px;color:var(--text-light);font-variant-numeric: tabular-nums;}
+.board-empty{font-family:'IBM Plex Mono', monospace;font-size:11px;color:var(--text-dim);padding:14px 18px;align-self:center;}
+.board-remove{position:absolute;top:10px;right:10px;color:var(--text-dim);font-size:13px;cursor:pointer;opacity:.6;}
+.board-remove:hover{opacity:1;color:var(--red);}
 
-  /* ---- Header / masthead ---- */
-  header{padding:44px 0 28px;}
-  .eyebrow{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    letter-spacing:.18em;
-    text-transform:uppercase;
-    color:var(--teal);
-    margin-bottom:10px;
-  }
-  h1{
-    font-family:'Fraunces', serif;
-    font-optical-sizing:auto;
-    font-weight:500;
-    font-size:clamp(32px,5vw,46px);
-    margin:0 0 8px;
-    letter-spacing:-.01em;
-  }
-  .sub{color:var(--text-dim);font-size:15px;max-width:56ch;line-height:1.5;}
+/* ---- Header ---- */
+header{padding:44px 0 28px;}
+.eyebrow{font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;cursor:pointer;display:inline-block;}
+h1{font-family:'Fraunces', serif;font-optical-sizing:auto;font-weight:500;font-size:clamp(32px,5vw,46px);margin:0 0 8px;letter-spacing:-.01em;cursor:pointer;}
+.sub{color:var(--text-dim);font-size:15px;max-width:56ch;line-height:1.5;}
 
-  /* ---- Search / atlas index ---- */
-  .search-row{
-    display:flex;gap:10px;
-    margin:28px 0 8px;
-  }
-  input[type=text]{
-    flex:1;
-    background:var(--ink-2);
-    border:1px solid var(--rule);
-    color:var(--text-light);
-    font-family:'IBM Plex Sans', sans-serif;
-    font-size:16px;
-    padding:14px 16px;
-    border-radius:2px;
-    outline:none;
-  }
-  input[type=text]:focus{border-color:var(--brass);}
-  button{
-    background:var(--brass);
-    color:var(--text-dark);
-    border:none;
-    font-family:'IBM Plex Mono', monospace;
-    font-size:13px;
-    letter-spacing:.08em;
-    text-transform:uppercase;
-    font-weight:500;
-    padding:0 22px;
-    border-radius:2px;
-    cursor:pointer;
-    transition:opacity .15s ease;
-  }
-  button:hover{opacity:.85;}
-  button:disabled{opacity:.4;cursor:default;}
-  .hint{font-size:12px;color:var(--text-dim);margin-bottom:36px;}
-  .suggest-list{
-    position:absolute;
-    top:calc(100% + 4px);
-    left:0;right:0;
-    background:var(--ink-3);
-    border:1px solid var(--rule);
-    border-radius:2px;
-    z-index:20;
-    max-height:280px;
-    overflow-y:auto;
-    display:none;
-  }
-  .suggest-list.open{display:block;}
-  .suggest-item{
-    padding:11px 14px;
-    cursor:pointer;
-    border-bottom:1px solid var(--rule);
-    font-size:14px;
-  }
-  .suggest-item:last-child{border-bottom:none;}
-  .suggest-item:hover, .suggest-item.hi{background:var(--ink-2);}
-  .suggest-main{color:var(--text-light);}
-  .suggest-sub{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    color:var(--text-dim);
-    margin-top:2px;
-  }
+/* ---- Buscador ---- */
+.search-row{display:flex;gap:10px;margin:28px 0 8px;}
+input[type=text]{flex:1;background:var(--ink-2);border:1px solid var(--rule);color:var(--text-light);font-family:'IBM Plex Sans', sans-serif;font-size:16px;padding:14px 16px;border-radius:2px;outline:none;}
+input[type=text]:focus{border-color:var(--brass);}
+button{background:var(--brass);color:var(--text-dark);border:none;font-family:'IBM Plex Mono', monospace;font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:500;padding:0 22px;border-radius:2px;cursor:pointer;transition:opacity .15s ease;}
+button:hover{opacity:.85;}
+button:disabled{opacity:.4;cursor:default;}
+.hint{font-size:12px;color:var(--text-dim);margin-bottom:36px;}
+.suggest-list{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--ink-3);border:1px solid var(--rule);border-radius:2px;z-index:20;max-height:280px;overflow-y:auto;display:none;}
+.suggest-list.open{display:block;}
+.suggest-item{padding:11px 14px;cursor:pointer;border-bottom:1px solid var(--rule);font-size:14px;}
+.suggest-item:last-child{border-bottom:none;}
+.suggest-item:hover, .suggest-item.hi{background:var(--ink-2);}
+.suggest-main{color:var(--text-light);}
+.suggest-sub{font-family:'IBM Plex Mono', monospace;font-size:11px;color:var(--text-dim);margin-top:2px;}
 
-  /* ---- Dispatch (selected place) ---- */
-  .dispatch{
-    border-top:1px solid var(--rule);
-    padding-top:32px;
-    display:none;
-  }
-  .dispatch.active{display:block;}
-  .dateline{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    letter-spacing:.12em;
-    text-transform:uppercase;
-    color:var(--teal);
-    margin-bottom:10px;
-  }
-  .place-name{
-    font-family:'Fraunces', serif;
-    font-weight:500;
-    font-size:clamp(28px,4.4vw,40px);
-    margin:0 0 16px;
-  }
-  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
-  .chip{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:12px;
-    color:var(--text-dim);
-    border:1px solid var(--rule);
-    padding:6px 12px;
-    border-radius:20px;
-  }
-  .chip b{color:var(--text-light);font-weight:500;}
-  .summary{
-    color:var(--text-light);
-    line-height:1.65;
-    font-size:15.5px;
-    max-width:64ch;
-    margin-bottom:8px;
-  }
-  .fav-toggle{
-    background:none;
-    border:1px solid var(--brass);
-    color:var(--brass);
-    margin-top:14px;
-    padding:9px 18px;
-  }
-  .fav-toggle.on{background:var(--brass);color:var(--text-dark);}
+/* ---- Resumen (home) ---- */
+.summary-card{border-top:1px solid var(--rule);padding-top:32px;display:none;}
+.summary-card.active{display:block;}
+.dateline{font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;}
+.place-name{font-family:'Fraunces', serif;font-weight:500;font-size:clamp(28px,4.4vw,40px);margin:0 0 16px;}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px;}
+.chip{font-family:'IBM Plex Mono', monospace;font-size:12px;color:var(--text-dim);border:1px solid var(--rule);padding:6px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;}
+.chip b{color:var(--text-light);font-weight:500;}
+.enter-btn{display:inline-flex;align-items:center;gap:8px;background:none;border:1.5px solid var(--brass);color:var(--brass);padding:14px 24px;font-size:14px;border-radius:3px;margin-top:4px;}
+.enter-btn:hover{background:var(--brass);color:var(--text-dark);opacity:1;}
+.fav-toggle{background:none;border:1px solid var(--rule);color:var(--text-dim);margin:4px 0 0 10px;padding:14px 18px;font-size:12px;}
+.fav-toggle.on{border-color:var(--brass);color:var(--brass);}
 
-  /* ---- Wire feed ---- */
-  .feed-label{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:var(--text-dim);
-    margin:40px 0 6px;
-    border-top:1px solid var(--rule);
-    padding-top:24px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-  }
-  .translate-btn{
-    background:none;
-    border:1px solid var(--teal);
-    color:var(--teal);
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    letter-spacing:.06em;
-    text-transform:uppercase;
-    padding:7px 14px;
-    border-radius:20px;
-    cursor:pointer;
-  }
-  .translate-btn:hover{background:var(--teal);color:var(--ink);}
-  .translate-btn:disabled{opacity:.5;cursor:default;}
-  .wire-item .orig-lang{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:10px;
-    color:var(--text-dim);
-    text-transform:uppercase;
-    margin-right:8px;
-  }
-  .wire{
-    position:relative;
-    padding-left:20px;
-  }
-  .wire::before{
-    content:"";
-    position:absolute;left:4px;top:6px;bottom:6px;
-    width:1px;background:var(--rule);
-  }
-  .wire-item{
-    position:relative;
-    padding:16px 0;
-    border-bottom:1px solid var(--rule);
-  }
-  .wire-item::before{
-    content:"";
-    position:absolute;left:-20px;top:22px;
-    width:7px;height:7px;border-radius:50%;
-    background:var(--brass);
-  }
-  .wire-item a{
-    color:var(--text-light);
-    text-decoration:none;
-    font-size:16px;
-    line-height:1.4;
-    display:block;
-  }
-  .wire-item a:hover{color:var(--brass);}
-  .wire-meta{
-    font-family:'IBM Plex Mono', monospace;
-    font-size:11px;
-    color:var(--text-dim);
-    margin-top:6px;
-    text-transform:uppercase;
-    letter-spacing:.06em;
-  }
+/* ---- Vista ciudad (detalle) ---- */
+.city-view{border-top:1px solid var(--rule);padding-top:32px;display:none;}
+.city-view.active{display:block;}
+.back-link{font-family:'IBM Plex Mono', monospace;font-size:12px;color:var(--text-dim);cursor:pointer;margin-bottom:18px;display:inline-block;}
+.back-link:hover{color:var(--brass);}
 
-  .state-msg{
-    color:var(--text-dim);
-    font-family:'IBM Plex Mono', monospace;
-    font-size:13px;
-    padding:20px 0;
-  }
-  .paper-note{
-    background:var(--paper);
-    color:var(--text-dark);
-    padding:14px 16px;
-    border-radius:2px;
-    font-size:13px;
-    line-height:1.5;
-    margin-top:10px;
-  }
+.cam-box{margin-bottom:32px;border:1px solid var(--rule);border-radius:3px;overflow:hidden;}
+.cam-img{width:100%;display:block;max-height:320px;object-fit:cover;background:var(--ink-2);}
+.cam-meta{padding:10px 14px;font-family:'IBM Plex Mono', monospace;font-size:11px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;}
+.cam-live-dot{width:7px;height:7px;border-radius:50%;background:var(--red);display:inline-block;margin-right:6px;animation:pulse 1.6s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+.section-block{margin:38px 0;}
+.section-title{font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);border-top:1px solid var(--rule);padding-top:22px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+.translate-btn{background:none;border:1px solid var(--teal);color:var(--teal);font-family:'IBM Plex Mono', monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:7px 14px;border-radius:20px;cursor:pointer;}
+.translate-btn:hover{background:var(--teal);color:var(--ink);}
+.translate-btn:disabled{opacity:.5;cursor:default;}
+
+.wire{position:relative;padding-left:20px;}
+.wire::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:var(--rule);}
+.wire-item{position:relative;padding:16px 0;border-bottom:1px solid var(--rule);}
+.wire-item::before{content:"";position:absolute;left:-20px;top:22px;width:7px;height:7px;border-radius:50%;background:var(--brass);}
+.wire-item a{color:var(--text-light);text-decoration:none;font-size:16px;line-height:1.4;display:block;}
+.wire-item a:hover{color:var(--brass);}
+.wire-meta{font-family:'IBM Plex Mono', monospace;font-size:11px;color:var(--text-dim);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;display:flex;gap:10px;align-items:center;}
+.mini-translate{font-family:'IBM Plex Mono', monospace;font-size:10px;color:var(--teal);cursor:pointer;text-decoration:underline;text-transform:none;letter-spacing:0;}
+
+.interest-row{display:flex;gap:8px;margin-bottom:6px;}
+.interest-row input{font-size:14px;padding:12px 14px;}
+.interest-hint{font-size:12px;color:var(--text-dim);margin-bottom:16px;}
+
+.poi-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+.poi-tab{font-family:'IBM Plex Mono', monospace;font-size:11px;text-transform:uppercase;letter-spacing:.06em;background:var(--ink-2);border:1px solid var(--rule);color:var(--text-dim);padding:8px 14px;border-radius:20px;cursor:pointer;}
+.poi-tab.active{border-color:var(--brass);color:var(--brass);}
+.poi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;}
+.poi-card{background:var(--ink-2);border:1px solid var(--rule);border-radius:3px;padding:14px 16px;}
+.poi-name{font-size:14.5px;margin-bottom:4px;}
+.poi-addr{font-family:'IBM Plex Mono', monospace;font-size:11px;color:var(--text-dim);margin-bottom:8px;}
+.poi-link{font-family:'IBM Plex Mono', monospace;font-size:11px;color:var(--teal);text-decoration:none;}
+
+.state-msg{color:var(--text-dim);font-family:'IBM Plex Mono', monospace;font-size:13px;padding:16px 0;}
 </style>
 </head>
 <body>
 
-<div class="board" id="board">
-  <div class="board-inner" id="boardInner"></div>
-</div>
+<div class="board" id="board"><div class="board-inner" id="boardInner"></div></div>
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Módulo de lugares</div>
-    <h1>Corresponsal</h1>
-    <p class="sub">Escribí cualquier ciudad o lugar del mundo. Trae ficha básica y titulares de prensa local con link directo a la fuente.</p>
+    <div class="eyebrow" id="goHome">Módulo de lugares</div>
+    <h1 id="titleHome">Corresponsal</h1>
+    <p class="sub">Escribí cualquier ciudad o lugar del mundo. Datos en vivo, noticias locales y la posibilidad de traducir todo al toque.</p>
   </header>
 
   <div class="search-row" style="position:relative;">
@@ -312,321 +133,58 @@
     </div>
     <button id="searchBtn">Consultar</button>
   </div>
-  <div class="hint">Escribí 3 letras o más y elegí de la lista para evitar ambigüedad (ej. "Salto" existe en varios países). Los favoritos de la franja superior son un placeholder — se cargan editando <code>FAVORITES</code> en el código.</div>
+  <div class="hint">Escribí 3 letras o más y elegí de la lista para evitar ambigüedad (ej. "Salto" existe en varios países).</div>
 
-  <div class="dispatch" id="dispatch">
+  <!-- HOME: resumen del lugar buscado -->
+  <div class="summary-card" id="summaryCard">
     <div class="dateline" id="dateline">—</div>
     <h2 class="place-name" id="placeName">—</h2>
     <div class="chips" id="chips"></div>
-    <p class="summary" id="summary"></p>
+    <button class="enter-btn" id="enterBtn">Entrá a la ciudad →</button>
     <button class="fav-toggle" id="favToggle">+ Fijar como favorito</button>
+  </div>
 
-    <div class="feed-label" id="feedLabelRow">
-      <span>Titulares recientes</span>
-      <button class="translate-btn" id="translateBtn">Traducir todo</button>
+  <!-- VISTA CIUDAD: detalle completo -->
+  <div class="city-view" id="cityView">
+    <span class="back-link" id="backLink">← volver al resumen</span>
+
+    <div class="cam-box" id="camBox" style="display:none;">
+      <img class="cam-img" id="camImg" src="" alt="Cámara en vivo">
+      <div class="cam-meta">
+        <span><span class="cam-live-dot"></span><span id="camTitle"></span></span>
+        <a id="camLink" href="#" target="_blank" rel="noopener" style="color:var(--text-dim);">ver en Windy →</a>
+      </div>
     </div>
-    <div class="wire" id="wire"></div>
+
+    <div class="section-block">
+      <div class="section-title">
+        <span>Titulares recientes</span>
+        <button class="translate-btn" id="translateBtn">Traducir todo</button>
+      </div>
+      <div class="wire" id="wire"></div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-title"><span>Intereses locales</span></div>
+      <div class="interest-row">
+        <input type="text" id="interestInput" placeholder="Ej: torneos de ajedrez, festivales, ferias…">
+        <button id="interestBtn">Buscar</button>
+      </div>
+      <div class="interest-hint">Pedí lo que te interese de este lugar puntual — no es una lista fija, la armás vos.</div>
+      <div class="wire" id="interestWire"></div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-title"><span>Lugares cerca</span></div>
+      <div class="poi-tabs" id="poiTabs"></div>
+      <div class="poi-grid" id="poiGrid"></div>
+      <div id="poiState" class="state-msg"></div>
+    </div>
   </div>
 
   <div id="stateMsg" class="state-msg"></div>
 </div>
 
-<script>
-/* ============ Config: favoritos precargados (editar a mano) ============ */
-const FAVORITES = [
-  { name: "Montevideo", country: "Uruguay", tz: "America/Montevideo", lat: -34.9011, lon: -56.1645 },
-  { name: "Lugar 2 (placeholder)", country: "", tz: "UTC", lat: 0, lon: 0 },
-  { name: "Lugar 3 (placeholder)", country: "", tz: "UTC", lat: 0, lon: 0 },
-];
-
-const boardInner = document.getElementById('boardInner');
-const dispatch = document.getElementById('dispatch');
-const stateMsg = document.getElementById('stateMsg');
-
-/* ============ Departures board: hora local de cada favorito ============ */
-function renderBoard(){
-  boardInner.innerHTML = '';
-  FAVORITES.forEach(f => {
-    const cell = document.createElement('div');
-    cell.className = 'board-cell';
-    cell.innerHTML = `<div class="board-city">${f.name}</div><div class="board-time" data-tz="${f.tz}">--:--</div>`;
-    cell.addEventListener('click', () => loadPlace(f.name, { displayName: f.name, country: f.country, lat: f.lat, lon: f.lon }));
-    boardInner.appendChild(cell);
-  });
-  updateBoardClocks();
-  setInterval(updateBoardClocks, 30000);
-}
-function updateBoardClocks(){
-  document.querySelectorAll('.board-time').forEach(el => {
-    const tz = el.dataset.tz;
-    try{
-      el.textContent = new Intl.DateTimeFormat('es-UY', {
-        hour:'2-digit', minute:'2-digit', hour12:false, timeZone: tz
-      }).format(new Date());
-    }catch(e){ el.textContent = '--:--'; }
-  });
-}
-renderBoard();
-
-/* ============ Buscador predictivo (autocompletado) ============ */
-const placeInput = document.getElementById('placeInput');
-const suggestList = document.getElementById('suggestList');
-let suggestTimer = null;
-let suggestItems = [];
-let hiIndex = -1;
-let selectedPlace = null; // lugar elegido de la lista (evita ambigüedad)
-
-const PLACE_TYPES = new Set([
-  'city','town','village','hamlet','municipality','suburb','county',
-  'state','island','locality','administrative','borough'
-]);
-
-placeInput.addEventListener('input', () => {
-  selectedPlace = null;
-  const q = placeInput.value.trim();
-  clearTimeout(suggestTimer);
-  if(q.length < 3){ closeSuggest(); return; }
-  suggestTimer = setTimeout(() => fetchSuggestions(q), 350);
-});
-
-placeInput.addEventListener('keydown', e => {
-  if(suggestList.classList.contains('open') && suggestItems.length){
-    if(e.key === 'ArrowDown'){ e.preventDefault(); hiIndex = Math.min(hiIndex+1, suggestItems.length-1); paintHi(); return; }
-    if(e.key === 'ArrowUp'){ e.preventDefault(); hiIndex = Math.max(hiIndex-1, 0); paintHi(); return; }
-    if(e.key === 'Enter' && hiIndex >= 0){ e.preventDefault(); chooseSuggestion(suggestItems[hiIndex]); return; }
-  }
-  if(e.key === 'Enter'){ document.getElementById('searchBtn').click(); }
-  if(e.key === 'Escape'){ closeSuggest(); }
-});
-
-document.addEventListener('click', e => {
-  if(!e.target.closest('.search-row')) closeSuggest();
-});
-
-function closeSuggest(){
-  suggestList.classList.remove('open');
-  suggestList.innerHTML = '';
-  suggestItems = [];
-  hiIndex = -1;
-}
-
-function paintHi(){
-  [...suggestList.children].forEach((el, i) => el.classList.toggle('hi', i === hiIndex));
-}
-
-async function fetchSuggestions(q){
-  try{
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&accept-language=es&q=${encodeURIComponent(q)}`);
-    const results = await res.json();
-    suggestItems = results.filter(r => PLACE_TYPES.has(r.type) || PLACE_TYPES.has(r.class)).slice(0, 6);
-    if(!suggestItems.length){ closeSuggest(); return; }
-    renderSuggestions();
-  }catch(e){ closeSuggest(); }
-}
-
-function renderSuggestions(){
-  hiIndex = -1;
-  suggestList.innerHTML = '';
-  suggestItems.forEach(r => {
-    const a = r.address || {};
-    const main = a.city || a.town || a.village || a.municipality || r.display_name.split(',')[0];
-    const sub = [a.state, a.country].filter(Boolean).join(', ');
-    const el = document.createElement('div');
-    el.className = 'suggest-item';
-    el.innerHTML = `<div class="suggest-main">${main}</div><div class="suggest-sub">${sub}</div>`;
-    el.addEventListener('click', () => chooseSuggestion(r));
-    suggestList.appendChild(el);
-  });
-  suggestList.classList.add('open');
-}
-
-function chooseSuggestion(r){
-  const a = r.address || {};
-  const main = a.city || a.town || a.village || a.municipality || r.display_name.split(',')[0];
-  selectedPlace = { displayName: main, country: a.country || '', lat: r.lat, lon: r.lon };
-  placeInput.value = [main, a.country].filter(Boolean).join(', ');
-  closeSuggest();
-  loadPlace(placeInput.value, selectedPlace);
-}
-
-document.getElementById('searchBtn').addEventListener('click', () => {
-  const q = placeInput.value.trim();
-  if(!q) return;
-  if(selectedPlace){ loadPlace(q, selectedPlace); }
-  else { loadPlace(q); } // fallback: geocoding directo, puede ser ambiguo
-});
-
-// Convierte el nombre de un lugar en una consulta apta para noticias:
-// saca guiones/rayas y arma frase exacta si tiene varias palabras; suma el país para acotar.
-function buildNewsQuery(name, country){
-  const clean = name.replace(/[-–—_]/g, ' ').replace(/\s+/g, ' ').trim();
-  const phrase = clean.includes(' ') ? `"${clean}"` : clean;
-  return country ? `${phrase} ${country}` : phrase;
-}
-
-async function loadPlace(query, preResolved){
-  stateMsg.textContent = 'Buscando…';
-  dispatch.classList.remove('active');
-
-  try{
-    let displayName, country, lat, lon;
-
-    if(preResolved){
-      ({ displayName, country, lat, lon } = preResolved);
-    } else {
-      // Fallback sin desambiguar (usuario tecleó Enter sin elegir de la lista)
-      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&accept-language=es&q=${encodeURIComponent(query)}`);
-      const geo = await geoRes.json();
-      if(!geo.length){ stateMsg.textContent = 'No encontré ese lugar. Probá con otro nombre.'; return; }
-      const place = geo[0];
-      const a = place.address || {};
-      displayName = a.city || a.town || a.village || a.municipality || place.display_name.split(',')[0];
-      country = a.country || place.display_name.split(',').pop().trim();
-      lat = place.lat; lon = place.lon;
-    }
-
-    // Ficha básica (Wikipedia ES) — probamos primero "Ciudad, País" para evitar homónimos,
-    // y si no existe esa página puntual, caemos al nombre simple.
-    let summary = '';
-    try{
-      let wikiRes = await fetch(`https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(displayName + ', ' + country)}`);
-      if(!wikiRes.ok){
-        wikiRes = await fetch(`https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(displayName)}`);
-      }
-      if(wikiRes.ok){
-        const wiki = await wikiRes.json();
-        summary = wiki.extract || '';
-      }
-    }catch(e){}
-
-    // Titulares (vía function propia — evita CORS)
-    let articles = [];
-    let newsError = null;
-    try{
-      const newsQuery = buildNewsQuery(displayName, country);
-      const newsRes = await fetch(`/api/news?q=${encodeURIComponent(newsQuery)}`);
-      if(newsRes.ok){
-        const newsData = await newsRes.json();
-        articles = newsData.articles || [];
-        if(newsData.error) newsError = newsData.error;
-      } else {
-        newsError = `HTTP ${newsRes.status}`;
-      }
-    }catch(e){
-      newsError = e.message || 'fetch falló';
-    }
-
-    renderDispatch({ displayName, country, lat, lon, summary, articles, newsError, query });
-    stateMsg.textContent = '';
-  }catch(err){
-    stateMsg.textContent = 'Error al traer los datos. Revisá la conexión e intentá de nuevo.';
-    console.error(err);
-  }
-}
-
-function renderDispatch({displayName, country, lat, lon, summary, articles, newsError, query}){
-  document.getElementById('dateline').textContent =
-    `${displayName.toUpperCase()} — ${new Date().toLocaleDateString('es-UY',{day:'2-digit',month:'short',year:'numeric'})}`;
-  document.getElementById('placeName').textContent = displayName;
-
-  const chips = document.getElementById('chips');
-  chips.innerHTML = `
-    <span class="chip"><b>País</b> ${country}</span>
-    <span class="chip"><b>Coordenadas</b> ${parseFloat(lat).toFixed(2)}, ${parseFloat(lon).toFixed(2)}</span>
-  `;
-
-  document.getElementById('summary').textContent = summary || 'No se encontró resumen para este lugar.';
-
-  const favBtn = document.getElementById('favToggle');
-  favBtn.textContent = '+ Fijar como favorito';
-  favBtn.classList.remove('on');
-  favBtn.onclick = () => {
-    favBtn.classList.toggle('on');
-    favBtn.textContent = favBtn.classList.contains('on') ? '✓ Fijado (agregalo a FAVORITES en el código)' : '+ Fijar como favorito';
-  };
-
-  currentArticles = articles;
-  currentNewsError = newsError;
-  translated = false;
-  const btn = document.getElementById('translateBtn');
-  btn.textContent = 'Traducir todo';
-  btn.disabled = !articles.length;
-  renderWire(false);
-
-  dispatch.classList.add('active');
-}
-
-/* ============ Wire feed: original vs traducido ============ */
-let currentArticles = [];
-let currentNewsError = null;
-let translated = false;
-
-function formatWireDate(raw){
-  if(!raw) return '';
-  const d = new Date(raw);
-  if(isNaN(d)) return raw;
-  return d.toLocaleDateString('es-UY', { day:'2-digit', month:'short', year:'numeric' });
-}
-
-function renderWire(useTranslated){
-  const wire = document.getElementById('wire');
-  wire.innerHTML = '';
-  if(currentNewsError){
-    wire.innerHTML = `<div class="state-msg">No se pudieron traer los titulares — error: ${currentNewsError}</div>`;
-    return;
-  }
-  if(!currentArticles.length){
-    wire.innerHTML = '<div class="state-msg">No se encontraron titulares recientes para este lugar.</div>';
-    return;
-  }
-  currentArticles.forEach(a => {
-    const title = useTranslated && a._translated ? a._translated : a.title;
-    const item = document.createElement('div');
-    item.className = 'wire-item';
-    item.innerHTML = `
-      <a href="${a.url}" target="_blank" rel="noopener">${title}</a>
-      <div class="wire-meta">${a.domain || ''} · ${formatWireDate(a.seendate)}</div>
-    `;
-    wire.appendChild(item);
-  });
-}
-
-// Traducción vía function propia (evita CORS) — usa MyMemory por atrás.
-async function translateText(text, targetLang='es'){
-  const url = `/api/translate?text=${encodeURIComponent(text)}&target=${targetLang}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('translate request failed');
-  const data = await res.json();
-  return data?.translatedText || text;
-}
-
-document.getElementById('translateBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('translateBtn');
-  if(translated){
-    translated = false;
-    btn.textContent = 'Traducir todo';
-    renderWire(false);
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = 'Traduciendo…';
-  try{
-    await Promise.all(currentArticles.map(async a => {
-      if(!a._translated){
-        try{ a._translated = await translateText(a.title, 'es'); }
-        catch(e){ a._translated = a.title; }
-      }
-    }));
-    translated = true;
-    btn.textContent = 'Ver original';
-    renderWire(true);
-  }catch(e){
-    console.error(e);
-    stateMsg.textContent = 'No se pudo traducir en este momento.';
-  }finally{
-    btn.disabled = false;
-  }
-});
-</script>
+<script src="app.js"></script>
 </body>
 </html>

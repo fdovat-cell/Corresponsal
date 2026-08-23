@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: places
+    description: Place discovery and local context
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /places/suggest:
+    get:
+      operationId: suggestPlaces
+      tags: [places]
+      summary: Suggest places
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 8
+            default: 6
+      responses:
+        "200":
+          description: Matching places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Place"
+        "400":
+          description: Invalid query
+  /places/brief:
+    get:
+      operationId: getPlaceBrief
+      tags: [places]
+      summary: Get a current brief for a place
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: lon
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Current place brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceBrief"
+  /places/news:
+    get:
+      operationId: getPlaceNews
+      tags: [places]
+      summary: Get current news for a place or topic
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: country
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+            default: 8
+      responses:
+        "200":
+          description: Current news
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsItem"
+  /places/nearby:
+    get:
+      operationId: getNearbyPlaces
+      tags: [places]
+      summary: Find nearby places
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: lon
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            default: cafe
+      responses:
+        "200":
+          description: Nearby places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NearbyPlace"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    Place:
+      type: object
+      required: [displayName, country, countryCode, lat, lon]
+      properties:
+        displayName: { type: string }
+        country: { type: string }
+        countryCode: { type: string }
+        state: { type: ["string", "null"] }
+        lat: { type: number }
+        lon: { type: number }
+        timezone: { type: ["string", "null"] }
+    Weather:
+      type: object
+      required: [temperature, description, icon]
+      properties:
+        temperature: { type: number }
+        description: { type: string }
+        icon: { type: string }
+    PlaceBrief:
+      type: object
+      required: [place, weather, localTime, updatedAt]
+      properties:
+        place:
+          $ref: "#/components/schemas/Place"
+        weather:
+          $ref: "#/components/schemas/Weather"
+        localTime: { type: string }
+        summary: { type: ["string", "null"] }
+        imageUrl: { type: ["string", "null"] }
+        updatedAt: { type: string, format: date-time }
+    NewsItem:
+      type: object
+      required: [title, url, source, publishedAt, language]
+      properties:
+        title: { type: string }
+        translatedTitle: { type: ["string", "null"] }
+        url: { type: string, minLength: 1 }
+        source: { type: string }
+        publishedAt: { type: string, format: date-time }
+        language: { type: string }
+        topic: { type: ["string", "null"] }
+    NearbyPlace:
+      type: object
+      required: [name, category, address, mapUrl]
+      properties:
+        name: { type: string }
+        category: { type: string }
+        address: { type: ["string", "null"] }
+        mapUrl: { type: string, minLength: 1 }
+

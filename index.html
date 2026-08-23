@@ -377,17 +377,18 @@ async function loadPlace(query){
       }
     }catch(e){}
 
-    // 3. Titulares (GDELT)
+    // 3. Titulares (vía function propia — evita CORS)
     let articles = [];
     let newsError = null;
     try{
       const newsQuery = buildNewsQuery(displayName);
-      const gdeltRes = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(newsQuery)}&mode=artlist&maxrecords=8&sort=datedesc&format=json`);
-      if(gdeltRes.ok){
-        const gdelt = await gdeltRes.json();
-        articles = gdelt.articles || [];
+      const newsRes = await fetch(`/api/news?q=${encodeURIComponent(newsQuery)}`);
+      if(newsRes.ok){
+        const newsData = await newsRes.json();
+        articles = newsData.articles || [];
+        if(newsData.error) newsError = newsData.error;
       } else {
-        newsError = `HTTP ${gdeltRes.status}`;
+        newsError = `HTTP ${newsRes.status}`;
       }
     }catch(e){
       newsError = e.message || 'fetch falló';
@@ -461,15 +462,13 @@ function renderWire(useTranslated){
   });
 }
 
-// Traducción vía MyMemory (gratis, sin API key, CORS habilitado) — para prototipo.
-// Límite: ~500 caracteres por pedido y tope de uso diario por IP. Para uso intensivo
-// conviene pasar a DeepL o Google Cloud Translation con clave propia.
+// Traducción vía function propia (evita CORS) — usa MyMemory por atrás.
 async function translateText(text, targetLang='es'){
-  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${targetLang}`;
+  const url = `/api/translate?text=${encodeURIComponent(text)}&target=${targetLang}`;
   const res = await fetch(url);
   if(!res.ok) throw new Error('translate request failed');
   const data = await res.json();
-  return data?.responseData?.translatedText || text;
+  return data?.translatedText || text;
 }
 
 document.getElementById('translateBtn').addEventListener('click', async () => {

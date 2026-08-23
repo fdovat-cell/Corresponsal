@@ -1,27 +1,84 @@
+// Traducción con fallback en cascada:
+// 1) DeepL (si hay env.DEEPL_API_KEY configurada) — mejor calidad y cuota (500k caracteres/mes gratis).
+// 2) MyMemory (gratis, sin key, pero se agota rápido) — funciona igual sin configurar nada.
+// Además cachea traducciones repetidas si hay un binding de KV (env.TRANSLATE_CACHE).
+
+async function cacheGet(env, key) {
+  try {
+    if (!env.TRANSLATE_CACHE) return null;
+    return await env.TRANSLATE_CACHE.get(key);
+  } catch (e) { return null; }
+}
+async function cacheSet(env, key, value) {
+  try {
+    if (!env.TRANSLATE_CACHE) return;
+    await env.TRANSLATE_CACHE.put(key, value, { expirationTtl: 60 * 60 * 24 * 30 }); // 30 días
+  } catch (e) { /* sin KV, no pasa nada */ }
+}
+
+async function translateWithDeepL(text, target, apiKey) {
+  const res = await fetch('https://api-free.deepl.com/v2/translate', {
+    method: 'POST',
+    headers: {
+      'Authorization': `DeepL-Auth-Key ${apiKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({ text, target_lang: target.toUpperCase() })
+  });
+  if (!res.ok) throw new Error(`DeepL HTTP ${res.status}`);
+  const data = await res.json();
+  return data?.translations?.[0]?.text || null;
+}
+
+async function translateWithMyMemory(text, target) {
+  const apiUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${target}`;
+  const res = await fetch(apiUrl);
+  const data = await res.json();
+  return data?.responseData?.translatedText || null;
+}
+
 export async function onRequestGet(context) {
-  const url = new URL(context.request.url);
+  const { request, env } = context;
+  const url = new URL(request.url);
   const text = url.searchParams.get('text') || '';
-  const target = url.searchParams.get('target') || 'es';
+  const target = (url.searchParams.get('target') || 'es').toLowerCase();
 
   if (!text) {
-    return new Response(JSON.stringify({ translatedText: '' }), {
-      headers: { 'content-type': 'application/json' }
-    });
+    return json({ translatedText: '' });
   }
 
-  const apiUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${target}`;
+  const cacheKey = `tr:${target}:${text}`;
+  const cachedText = await cacheGet(env, cacheKey);
+  if (cachedText) return json({ translatedText: cachedText, engine: 'cache' });
 
-  try {
-    const res = await fetch(apiUrl);
-    const data = await res.json();
-    const translatedText = data?.responseData?.translatedText || text;
-    return new Response(JSON.stringify({ translatedText }), {
-      headers: { 'content-type': 'application/json' }
-    });
-  } catch (err) {
-    return new Response(JSON.stringify({ translatedText: text, error: String(err) }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' }
-    });
+  let translatedText = null;
+  let engine = null;
+
+  if (env.DEEPL_API_KEY) {
+    try {
+      translatedText = await translateWithDeepL(text, target, env.DEEPL_API_KEY);
+      engine = 'deepl';
+    } catch (e) { /* cae a MyMemory */ }
   }
+
+  if (!translatedText) {
+    try {
+      translatedText = await translateWithMyMemory(text, target);
+      engine = 'mymemory';
+    } catch (e) { /* devolvemos el original abajo */ }
+  }
+
+  if (!translatedText) {
+    return json({ translatedText: text, error: 'sin motores de traducción disponibles' });
+  }
+
+  await cacheSet(env, cacheKey, translatedText);
+  return json({ translatedText, engine });
+}
+
+function json(obj) {
+  return new Response(JSON.stringify(obj), {
+    status: 200,
+    headers: { 'content-type': 'application/json' }
+  });
 }

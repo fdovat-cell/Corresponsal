@@ -127,6 +127,34 @@
   button:hover{opacity:.85;}
   button:disabled{opacity:.4;cursor:default;}
   .hint{font-size:12px;color:var(--text-dim);margin-bottom:36px;}
+  .suggest-list{
+    position:absolute;
+    top:calc(100% + 4px);
+    left:0;right:0;
+    background:var(--ink-3);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    z-index:20;
+    max-height:280px;
+    overflow-y:auto;
+    display:none;
+  }
+  .suggest-list.open{display:block;}
+  .suggest-item{
+    padding:11px 14px;
+    cursor:pointer;
+    border-bottom:1px solid var(--rule);
+    font-size:14px;
+  }
+  .suggest-item:last-child{border-bottom:none;}
+  .suggest-item:hover, .suggest-item.hi{background:var(--ink-2);}
+  .suggest-main{color:var(--text-light);}
+  .suggest-sub{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:2px;
+  }
 
   /* ---- Dispatch (selected place) ---- */
   .dispatch{
@@ -277,11 +305,14 @@
     <p class="sub">Escribí cualquier ciudad o lugar del mundo. Trae ficha básica y titulares de prensa local con link directo a la fuente.</p>
   </header>
 
-  <div class="search-row">
-    <input type="text" id="placeInput" placeholder="Ej: Helsinki, Kyoto, Ciudad del Cabo…" autocomplete="off">
+  <div class="search-row" style="position:relative;">
+    <div style="flex:1;position:relative;">
+      <input type="text" id="placeInput" placeholder="Ej: Helsinki, Kyoto, Ciudad del Cabo…" autocomplete="off">
+      <div id="suggestList" class="suggest-list"></div>
+    </div>
     <button id="searchBtn">Consultar</button>
   </div>
-  <div class="hint">Los favoritos de la franja superior son un placeholder — se cargan editando <code>FAVORITES</code> en el código.</div>
+  <div class="hint">Escribí 3 letras o más y elegí de la lista para evitar ambigüedad (ej. "Salto" existe en varios países). Los favoritos de la franja superior son un placeholder — se cargan editando <code>FAVORITES</code> en el código.</div>
 
   <div class="dispatch" id="dispatch">
     <div class="dateline" id="dateline">—</div>
@@ -319,7 +350,7 @@ function renderBoard(){
     const cell = document.createElement('div');
     cell.className = 'board-cell';
     cell.innerHTML = `<div class="board-city">${f.name}</div><div class="board-time" data-tz="${f.tz}">--:--</div>`;
-    cell.addEventListener('click', () => loadPlace(f.name));
+    cell.addEventListener('click', () => loadPlace(f.name, { displayName: f.name, country: f.country, lat: f.lat, lon: f.lon }));
     boardInner.appendChild(cell);
   });
   updateBoardClocks();
@@ -337,51 +368,142 @@ function updateBoardClocks(){
 }
 renderBoard();
 
-/* ============ Buscador ============ */
-document.getElementById('searchBtn').addEventListener('click', () => {
-  const q = document.getElementById('placeInput').value.trim();
-  if(q) loadPlace(q);
-});
-document.getElementById('placeInput').addEventListener('keydown', e => {
-  if(e.key === 'Enter') document.getElementById('searchBtn').click();
+/* ============ Buscador predictivo (autocompletado) ============ */
+const placeInput = document.getElementById('placeInput');
+const suggestList = document.getElementById('suggestList');
+let suggestTimer = null;
+let suggestItems = [];
+let hiIndex = -1;
+let selectedPlace = null; // lugar elegido de la lista (evita ambigüedad)
+
+const PLACE_TYPES = new Set([
+  'city','town','village','hamlet','municipality','suburb','county',
+  'state','island','locality','administrative','borough'
+]);
+
+placeInput.addEventListener('input', () => {
+  selectedPlace = null;
+  const q = placeInput.value.trim();
+  clearTimeout(suggestTimer);
+  if(q.length < 3){ closeSuggest(); return; }
+  suggestTimer = setTimeout(() => fetchSuggestions(q), 350);
 });
 
-// Convierte el nombre de un lugar en una consulta apta para GDELT:
-// saca guiones/rayas (que GDELT interpreta mal) y arma frase exacta si tiene varias palabras.
-function buildNewsQuery(name){
-  const clean = name.replace(/[-–—_]/g, ' ').replace(/\s+/g, ' ').trim();
-  return clean.includes(' ') ? `"${clean}"` : clean;
+placeInput.addEventListener('keydown', e => {
+  if(suggestList.classList.contains('open') && suggestItems.length){
+    if(e.key === 'ArrowDown'){ e.preventDefault(); hiIndex = Math.min(hiIndex+1, suggestItems.length-1); paintHi(); return; }
+    if(e.key === 'ArrowUp'){ e.preventDefault(); hiIndex = Math.max(hiIndex-1, 0); paintHi(); return; }
+    if(e.key === 'Enter' && hiIndex >= 0){ e.preventDefault(); chooseSuggestion(suggestItems[hiIndex]); return; }
+  }
+  if(e.key === 'Enter'){ document.getElementById('searchBtn').click(); }
+  if(e.key === 'Escape'){ closeSuggest(); }
+});
+
+document.addEventListener('click', e => {
+  if(!e.target.closest('.search-row')) closeSuggest();
+});
+
+function closeSuggest(){
+  suggestList.classList.remove('open');
+  suggestList.innerHTML = '';
+  suggestItems = [];
+  hiIndex = -1;
 }
 
-async function loadPlace(query){
+function paintHi(){
+  [...suggestList.children].forEach((el, i) => el.classList.toggle('hi', i === hiIndex));
+}
+
+async function fetchSuggestions(q){
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&accept-language=es&q=${encodeURIComponent(q)}`);
+    const results = await res.json();
+    suggestItems = results.filter(r => PLACE_TYPES.has(r.type) || PLACE_TYPES.has(r.class)).slice(0, 6);
+    if(!suggestItems.length){ closeSuggest(); return; }
+    renderSuggestions();
+  }catch(e){ closeSuggest(); }
+}
+
+function renderSuggestions(){
+  hiIndex = -1;
+  suggestList.innerHTML = '';
+  suggestItems.forEach(r => {
+    const a = r.address || {};
+    const main = a.city || a.town || a.village || a.municipality || r.display_name.split(',')[0];
+    const sub = [a.state, a.country].filter(Boolean).join(', ');
+    const el = document.createElement('div');
+    el.className = 'suggest-item';
+    el.innerHTML = `<div class="suggest-main">${main}</div><div class="suggest-sub">${sub}</div>`;
+    el.addEventListener('click', () => chooseSuggestion(r));
+    suggestList.appendChild(el);
+  });
+  suggestList.classList.add('open');
+}
+
+function chooseSuggestion(r){
+  const a = r.address || {};
+  const main = a.city || a.town || a.village || a.municipality || r.display_name.split(',')[0];
+  selectedPlace = { displayName: main, country: a.country || '', lat: r.lat, lon: r.lon };
+  placeInput.value = [main, a.country].filter(Boolean).join(', ');
+  closeSuggest();
+  loadPlace(placeInput.value, selectedPlace);
+}
+
+document.getElementById('searchBtn').addEventListener('click', () => {
+  const q = placeInput.value.trim();
+  if(!q) return;
+  if(selectedPlace){ loadPlace(q, selectedPlace); }
+  else { loadPlace(q); } // fallback: geocoding directo, puede ser ambiguo
+});
+
+// Convierte el nombre de un lugar en una consulta apta para noticias:
+// saca guiones/rayas y arma frase exacta si tiene varias palabras; suma el país para acotar.
+function buildNewsQuery(name, country){
+  const clean = name.replace(/[-–—_]/g, ' ').replace(/\s+/g, ' ').trim();
+  const phrase = clean.includes(' ') ? `"${clean}"` : clean;
+  return country ? `${phrase} ${country}` : phrase;
+}
+
+async function loadPlace(query, preResolved){
   stateMsg.textContent = 'Buscando…';
   dispatch.classList.remove('active');
-  document.getElementById('placeInput').value = query;
 
   try{
-    // 1. Geocoding
-    const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=es&q=${encodeURIComponent(query)}`);
-    const geo = await geoRes.json();
-    if(!geo.length){ stateMsg.textContent = 'No encontré ese lugar. Probá con otro nombre.'; return; }
-    const place = geo[0];
-    const displayName = place.display_name.split(',')[0];
-    const country = place.display_name.split(',').pop().trim();
+    let displayName, country, lat, lon;
 
-    // 2. Ficha básica (Wikipedia ES, con fallback EN)
+    if(preResolved){
+      ({ displayName, country, lat, lon } = preResolved);
+    } else {
+      // Fallback sin desambiguar (usuario tecleó Enter sin elegir de la lista)
+      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&accept-language=es&q=${encodeURIComponent(query)}`);
+      const geo = await geoRes.json();
+      if(!geo.length){ stateMsg.textContent = 'No encontré ese lugar. Probá con otro nombre.'; return; }
+      const place = geo[0];
+      const a = place.address || {};
+      displayName = a.city || a.town || a.village || a.municipality || place.display_name.split(',')[0];
+      country = a.country || place.display_name.split(',').pop().trim();
+      lat = place.lat; lon = place.lon;
+    }
+
+    // Ficha básica (Wikipedia ES) — probamos primero "Ciudad, País" para evitar homónimos,
+    // y si no existe esa página puntual, caemos al nombre simple.
     let summary = '';
     try{
-      const wikiRes = await fetch(`https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(displayName)}`);
+      let wikiRes = await fetch(`https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(displayName + ', ' + country)}`);
+      if(!wikiRes.ok){
+        wikiRes = await fetch(`https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(displayName)}`);
+      }
       if(wikiRes.ok){
         const wiki = await wikiRes.json();
         summary = wiki.extract || '';
       }
     }catch(e){}
 
-    // 3. Titulares (vía function propia — evita CORS)
+    // Titulares (vía function propia — evita CORS)
     let articles = [];
     let newsError = null;
     try{
-      const newsQuery = buildNewsQuery(displayName);
+      const newsQuery = buildNewsQuery(displayName, country);
       const newsRes = await fetch(`/api/news?q=${encodeURIComponent(newsQuery)}`);
       if(newsRes.ok){
         const newsData = await newsRes.json();
@@ -394,7 +516,7 @@ async function loadPlace(query){
       newsError = e.message || 'fetch falló';
     }
 
-    renderDispatch({ displayName, country, lat: place.lat, lon: place.lon, summary, articles, newsError, query });
+    renderDispatch({ displayName, country, lat, lon, summary, articles, newsError, query });
     stateMsg.textContent = '';
   }catch(err){
     stateMsg.textContent = 'Error al traer los datos. Revisá la conexión e intentá de nuevo.';

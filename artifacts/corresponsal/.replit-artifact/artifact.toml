@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Corresponsal"
+description = "Una aplicación para seguir lo que ocurre en ciudades y pueblos donde viven familiares o amigos en el exterior, con noticias, clima, hora local, fuentes y traducción al español."
+version = "1.0.0"
+id = "artifacts/corresponsal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22950
+
+[services.development]
+run = "pnpm --filter @workspace/corresponsal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/corresponsal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/corresponsal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22950"
+BASE_PATH = "/"

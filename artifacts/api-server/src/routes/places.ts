@@ -213,24 +213,7 @@ router.get("/places/news", async (req, res) => {
         };
       })
       .filter((item) => item.title && item.url);
-    const translated = await Promise.all(
-      items.map(async (item) => {
-        try {
-          const response = await fetch(
-            `https://api.mymemory.translated.net/get?q=${encodeURIComponent(item.title)}&langpair=auto|es`,
-          );
-          if (!response.ok) return item;
-          const data = (await response.json()) as { responseData?: { translatedText?: string } };
-          const translatedTitle = data.responseData?.translatedText?.trim();
-          return translatedTitle && translatedTitle.toLowerCase() !== item.title.toLowerCase()
-            ? { ...item, translatedTitle }
-            : item;
-        } catch {
-          return item;
-        }
-      }),
-    );
-    res.json(translated);
+    res.json(items);
   } catch (error) {
     req.log.warn({ err: error, name }, "Place news unavailable");
     res.status(502).json({ error: "No se pudieron actualizar las novedades." });

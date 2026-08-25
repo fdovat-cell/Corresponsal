@@ -93,6 +93,53 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// --- Cache en memoria para /places/suggest ---
+// Guarda cada búsqueda por 24hs para no volver a pegarle a ningún servicio
+// externo (LocationIQ o Nominatim) si alguien repite la misma consulta.
+const SUGGEST_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+type SuggestCacheEntry = { data: ReturnType<typeof placeFromNominatim>[]; expiresAt: number };
+const suggestCache = new Map<string, SuggestCacheEntry>();
+
+function getSuggestCacheKey(q: string, limit: number): string {
+  return `${q.trim().toLowerCase()}::${limit}`;
+}
+
+function getFromSuggestCache(key: string) {
+  const entry = suggestCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    suggestCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setSuggestCache(key: string, data: ReturnType<typeof placeFromNominatim>[]) {
+  suggestCache.set(key, { data, expiresAt: Date.now() + SUGGEST_CACHE_TTL_MS });
+}
+
+// --- Proveedor de búsqueda: LocationIQ si hay clave configurada, si no Nominatim ---
+async function fetchPlaceSuggestions(q: string, limit: number) {
+  const locationIqKey = process.env.LOCATIONIQ_API_KEY;
+
+  if (locationIqKey) {
+    try {
+      const results = await fetchJson<NominatimResult[]>(
+        `https://us1.locationiq.com/v1/search?key=${locationIqKey}&format=json&addressdetails=1&limit=${limit}&accept-language=es&q=${encodeURIComponent(q)}`,
+      );
+      return results.map(placeFromNominatim);
+    } catch (error) {
+      // Si LocationIQ falla (clave inválida, cuota agotada, etc.) no cortamos
+      // la búsqueda: caemos a Nominatim como si no hubiera clave configurada.
+    }
+  }
+
+  const results = await fetchJson<NominatimResult[]>(
+    `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&accept-language=es&q=${encodeURIComponent(q)}`,
+  );
+  return results.map(placeFromNominatim);
+}
+
 router.get("/places/suggest", async (req, res) => {
   const parsed = SuggestPlacesQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -100,12 +147,18 @@ router.get("/places/suggest", async (req, res) => {
     return;
   }
 
+  const { q, limit } = parsed.data;
+  const cacheKey = getSuggestCacheKey(q, limit);
+  const cached = getFromSuggestCache(cacheKey);
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
   try {
-    const { q, limit } = parsed.data;
-    const results = await fetchJson<NominatimResult[]>(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&accept-language=es&q=${encodeURIComponent(q)}`,
-    );
-    res.json(results.map(placeFromNominatim));
+    const suggestions = await fetchPlaceSuggestions(q, limit);
+    setSuggestCache(cacheKey, suggestions);
+    res.json(suggestions);
   } catch (error) {
     req.log.warn({ err: error }, "Place suggestions unavailable");
     res.status(502).json({ error: "No se pudo consultar el buscador geográfico." });

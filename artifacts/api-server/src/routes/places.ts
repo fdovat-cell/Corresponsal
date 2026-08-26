@@ -131,6 +131,8 @@ async function fetchPlaceSuggestions(q: string, limit: number) {
     } catch (error) {
       // Si LocationIQ falla (clave inválida, cuota agotada, etc.) no cortamos
       // la búsqueda: caemos a Nominatim como si no hubiera clave configurada.
+      // Logueamos el motivo para poder diagnosticarlo sin adivinar.
+      console.warn("LocationIQ suggest failed, falling back to Nominatim:", error);
     }
   }
 

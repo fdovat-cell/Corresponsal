@@ -167,6 +167,93 @@ router.get("/places/suggest", async (req, res) => {
   }
 });
 
+// --- Cache en memoria para /places/brief ---
+// El clima no necesita refrescarse todo el tiempo: cachear 30 min reduce
+// mucho la cantidad de pedidos salientes y baja la chance de toparse con
+// límites de uso de los servicios públicos.
+const BRIEF_CACHE_TTL_MS = 30 * 60 * 1000;
+const briefCache = new Map<string, { data: unknown; expiresAt: number }>();
+
+function getBriefCacheKey(name: string, lat: number, lon: number): string {
+  return `${name.trim().toLowerCase()}::${lat.toFixed(2)}::${lon.toFixed(2)}`;
+}
+
+function getFromBriefCache(key: string) {
+  const entry = briefCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    briefCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setBriefCache(key: string, data: unknown) {
+  briefCache.set(key, { data, expiresAt: Date.now() + BRIEF_CACHE_TTL_MS });
+}
+
+// --- Clima: OpenWeatherMap si hay clave configurada, si no Open-Meteo ---
+function timezoneLabelFromOffsetSeconds(offsetSeconds: number): string {
+  const totalMinutes = Math.round(offsetSeconds / 60);
+  const sign = totalMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(totalMinutes);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `UTC${sign}${hh}:${mm}`;
+}
+
+function weatherFromOwmId(id: number): { description: string; icon: string } {
+  if (id >= 200 && id < 300) return { description: "Tormenta", icon: "cloud-lightning" };
+  if (id >= 300 && id < 400) return { description: "Llovizna", icon: "cloud-drizzle" };
+  if (id >= 500 && id < 600) return { description: id >= 502 ? "Lluvia intensa" : "Lluvia", icon: "cloud-rain" };
+  if (id >= 600 && id < 700) return { description: id >= 602 ? "Nieve intensa" : "Nieve", icon: "snowflake" };
+  if (id >= 700 && id < 800) return { description: "Niebla", icon: "fog" };
+  if (id === 800) return { description: "Despejado", icon: "sun" };
+  if (id === 801) return { description: "Mayormente despejado", icon: "cloud-sun" };
+  if (id === 802) return { description: "Parcialmente nublado", icon: "cloud-sun" };
+  return { description: "Nublado", icon: "cloud" };
+}
+
+async function fetchWeatherData(lat: number, lon: number) {
+  const openWeatherKey = process.env.OPENWEATHERMAP_API_KEY;
+
+  if (openWeatherKey) {
+    try {
+      const owm = await fetchJson<{
+        main?: { temp?: number };
+        weather?: Array<{ id?: number }>;
+        timezone?: number;
+      }>(
+        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherKey}&units=metric&lang=es`,
+      );
+      const { description, icon } = weatherFromOwmId(owm.weather?.[0]?.id ?? -1);
+      return {
+        temperature: owm.main?.temp ?? 0,
+        description,
+        icon,
+        timezone: timezoneLabelFromOffsetSeconds(owm.timezone ?? 0),
+      };
+    } catch (error) {
+      // Si OpenWeatherMap falla (clave inválida, cuota agotada, etc.) no
+      // cortamos: caemos a Open-Meteo como si no hubiera clave configurada.
+      console.warn("OpenWeatherMap brief failed, falling back to Open-Meteo:", error);
+    }
+  }
+
+  const weather = await fetchJson<{
+    current?: { temperature_2m?: number; weather_code?: number };
+    timezone?: string;
+  }>(
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`,
+  );
+  return {
+    temperature: weather.current?.temperature_2m ?? 0,
+    description: weatherDescriptions[weather.current?.weather_code ?? -1] ?? "Condiciones actuales",
+    icon: weatherIcons[weather.current?.weather_code ?? -1] ?? "cloud",
+    timezone: weather.timezone ?? "UTC",
+  };
+}
+
 router.get("/places/brief", async (req, res) => {
   const parsed = GetPlaceBriefQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -175,14 +262,15 @@ router.get("/places/brief", async (req, res) => {
   }
 
   const { name, country, lat, lon } = parsed.data;
+  const cacheKey = getBriefCacheKey(name, lat, lon);
+  const cached = getFromBriefCache(cacheKey);
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
   try {
-    const weather = await fetchJson<{
-      current?: { temperature_2m?: number; weather_code?: number };
-      timezone?: string;
-    }>(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`,
-    );
-    const timezone = weather.timezone ?? "UTC";
+    const weather = await fetchWeatherData(lat, lon);
     let summary: string | null = null;
     let imageUrl: string | null = null;
     try {
@@ -199,7 +287,7 @@ router.get("/places/brief", async (req, res) => {
       // A place can be useful even when Wikipedia has no matching article.
     }
 
-    res.json({
+    const payload = {
       place: {
         displayName: name,
         country: country ?? "",
@@ -207,18 +295,20 @@ router.get("/places/brief", async (req, res) => {
         state: null,
         lat,
         lon,
-        timezone,
+        timezone: weather.timezone,
       },
       weather: {
-        temperature: weather.current?.temperature_2m ?? 0,
-        description: weatherDescriptions[weather.current?.weather_code ?? -1] ?? "Condiciones actuales",
-        icon: weatherIcons[weather.current?.weather_code ?? -1] ?? "cloud",
+        temperature: weather.temperature,
+        description: weather.description,
+        icon: weather.icon,
       },
       localTime: new Date().toISOString(),
       summary,
       imageUrl,
       updatedAt: new Date().toISOString(),
-    });
+    };
+    setBriefCache(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
     req.log.warn({ err: error, name }, "Place brief unavailable");
     res.status(502).json({ error: "No se pudo actualizar la información del lugar." });

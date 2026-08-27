@@ -334,9 +334,10 @@ router.get("/places/news", async (req, res) => {
   }
 
   const { name, country, topic, limit } = parsed.data;
-  // "when:1m" le pide a Google News que priorice el último mes; lo combinamos
-  // con un filtro propio más abajo como respaldo, por si igual devuelve algo viejo.
-  const query = [name, country, topic, "when:1m"].filter(Boolean).join(" ");
+  // Filtramos y ordenamos por fecha nosotros mismos más abajo; evitamos
+  // pedirle a Google un rango de fecha en la query para no depender de su
+  // sintaxis exacta.
+  const query = [name, country, topic].filter(Boolean).join(" ");
   const NEWS_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
   try {
     const rss = await fetch(

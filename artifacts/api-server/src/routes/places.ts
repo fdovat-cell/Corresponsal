@@ -193,13 +193,16 @@ function setBriefCache(key: string, data: unknown) {
 }
 
 // --- Clima: OpenWeatherMap si hay clave configurada, si no Open-Meteo ---
-function timezoneLabelFromOffsetSeconds(offsetSeconds: number): string {
-  const totalMinutes = Math.round(offsetSeconds / 60);
-  const sign = totalMinutes >= 0 ? "+" : "-";
-  const abs = Math.abs(totalMinutes);
-  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
-  const mm = String(abs % 60).padStart(2, "0");
-  return `UTC${sign}${hh}:${mm}`;
+function ianaFixedOffsetTimezone(offsetSeconds: number): string {
+  // Etc/GMT usa el signo invertido respecto a la notación UTC habitual
+  // (Etc/GMT-3 = UTC+3) y solo admite horas enteras, así que redondeamos
+  // los desfasajes de 30/45 min al entero más cercano. Es la única forma
+  // de pasarle una zona horaria válida a Intl.DateTimeFormat sin depender
+  // de un segundo servicio externo solo para esto.
+  const hours = Math.round(offsetSeconds / 3600);
+  if (hours === 0) return "UTC";
+  const sign = hours > 0 ? "-" : "+";
+  return `Etc/GMT${sign}${Math.abs(hours)}`;
 }
 
 function weatherFromOwmId(id: number): { description: string; icon: string } {
@@ -231,7 +234,7 @@ async function fetchWeatherData(lat: number, lon: number) {
         temperature: owm.main?.temp ?? 0,
         description,
         icon,
-        timezone: timezoneLabelFromOffsetSeconds(owm.timezone ?? 0),
+        timezone: ianaFixedOffsetTimezone(owm.timezone ?? 0),
       };
     } catch (error) {
       // Si OpenWeatherMap falla (clave inválida, cuota agotada, etc.) no

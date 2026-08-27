@@ -363,9 +363,20 @@ router.get("/places/news", async (req, res) => {
       })
       .filter((item) => item.title && item.url)
       .filter((item) => now - new Date(item.publishedAt).getTime() <= NEWS_MAX_AGE_MS)
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
-      .slice(0, limit);
-    res.json(items);
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+    // Algunas notas (ej. galerías de fotos) quedan indexadas como una entrada
+    // por página/imagen; las agrupamos por título (sin números) + fuente y
+    // nos quedamos con una sola.
+    const seen = new Set<string>();
+    const deduped = items.filter((item) => {
+      const key = `${item.source.toLowerCase()}::${item.title.replace(/\d+/g, "").trim().toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    res.json(deduped.slice(0, limit));
   } catch (error) {
     req.log.warn({ err: error, name }, "Place news unavailable");
     res.status(502).json({ error: "No se pudieron actualizar las novedades." });

@@ -326,6 +326,45 @@ function xmlValue(item: string, tag: string): string {
     .trim();
 }
 
+async function fetchNewsItems(query: string, topic: string | null) {
+  const rss = await fetch(
+    `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=es-419&gl=US&ceid=US:es-419`,
+    { headers: { "User-Agent": "Corresponsal/1.0 (news reader)" } },
+  );
+  if (!rss.ok) throw new Error(`News request failed: ${rss.status}`);
+  const xml = await rss.text();
+  const now = Date.now();
+  const NEWS_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
+  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)]
+    .map((match) => {
+      const item = match[1] ?? "";
+      const url = xmlValue(item, "link");
+      return {
+        title: xmlValue(item, "title"),
+        translatedTitle: null,
+        url,
+        source: xmlValue(item, "source") || "Google News",
+        publishedAt: new Date(xmlValue(item, "pubDate") || Date.now()).toISOString(),
+        language: "auto",
+        topic,
+      };
+    })
+    .filter((item) => item.title && item.url)
+    .filter((item) => now - new Date(item.publishedAt).getTime() <= NEWS_MAX_AGE_MS)
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+  // Algunas notas (ej. galerías de fotos) quedan indexadas como una entrada
+  // por página/imagen; las agrupamos por título (sin números) + fuente y
+  // nos quedamos con una sola.
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.source.toLowerCase()}::${item.title.replace(/\d+/g, "").trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 router.get("/places/news", async (req, res) => {
   const parsed = GetPlaceNewsQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -334,49 +373,18 @@ router.get("/places/news", async (req, res) => {
   }
 
   const { name, country, topic, limit } = parsed.data;
-  // Filtramos y ordenamos por fecha nosotros mismos más abajo; evitamos
-  // pedirle a Google un rango de fecha en la query para no depender de su
-  // sintaxis exacta.
-  const query = [name, country, topic].filter(Boolean).join(" ");
-  const NEWS_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
+  const placeQuery = [name, country, topic].filter(Boolean).join(" ");
   try {
-    const rss = await fetch(
-      `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=es-419&gl=US&ceid=US:es-419`,
-      { headers: { "User-Agent": "Corresponsal/1.0 (news reader)" } },
-    );
-    if (!rss.ok) throw new Error(`News request failed: ${rss.status}`);
-    const xml = await rss.text();
-    const now = Date.now();
-    const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)]
-      .map((match) => {
-        const item = match[1] ?? "";
-        const url = xmlValue(item, "link");
-        return {
-          title: xmlValue(item, "title"),
-          translatedTitle: null,
-          url,
-          source: xmlValue(item, "source") || "Google News",
-          publishedAt: new Date(xmlValue(item, "pubDate") || Date.now()).toISOString(),
-          language: "auto",
-          topic: topic ?? null,
-        };
-      })
-      .filter((item) => item.title && item.url)
-      .filter((item) => now - new Date(item.publishedAt).getTime() <= NEWS_MAX_AGE_MS)
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    let items = await fetchNewsItems(placeQuery, topic ?? null);
 
-    // Algunas notas (ej. galerías de fotos) quedan indexadas como una entrada
-    // por página/imagen; las agrupamos por título (sin números) + fuente y
-    // nos quedamos con una sola.
-    const seen = new Set<string>();
-    const deduped = items.filter((item) => {
-      const key = `${item.source.toLowerCase()}::${item.title.replace(/\d+/g, "").trim().toLowerCase()}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    // Si el lugar no tiene noticias recientes propias, mostramos lo más
+    // relevante del país en vez de dejar la sección vacía.
+    if (items.length === 0 && country) {
+      const countryQuery = [country, topic].filter(Boolean).join(" ");
+      items = await fetchNewsItems(countryQuery, topic ?? null);
+    }
 
-    res.json(deduped.slice(0, limit));
+    res.json(items.slice(0, limit));
   } catch (error) {
     req.log.warn({ err: error, name }, "Place news unavailable");
     res.status(502).json({ error: "No se pudieron actualizar las novedades." });

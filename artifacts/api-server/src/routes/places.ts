@@ -375,13 +375,21 @@ router.get("/places/news", async (req, res) => {
   const { name, country, topic, limit } = parsed.data;
   const placeQuery = [name, country, topic].filter(Boolean).join(" ");
   try {
-    let items = await fetchNewsItems(placeQuery, topic ?? null);
+    const items = await fetchNewsItems(placeQuery, topic ?? null);
 
-    // Si el lugar no tiene noticias recientes propias, mostramos lo más
-    // relevante del país en vez de dejar la sección vacía.
-    if (items.length === 0 && country) {
+    // Si el lugar no llena el cupo pedido con noticias propias recientes,
+    // completamos con lo más relevante del país en vez de mostrar poco.
+    if (items.length < limit && country) {
       const countryQuery = [country, topic].filter(Boolean).join(" ");
-      items = await fetchNewsItems(countryQuery, topic ?? null);
+      const countryItems = await fetchNewsItems(countryQuery, topic ?? null);
+      const seenUrls = new Set(items.map((item) => item.url));
+      for (const item of countryItems) {
+        if (items.length >= limit) break;
+        if (seenUrls.has(item.url)) continue;
+        seenUrls.add(item.url);
+        items.push(item);
+      }
+      items.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
     }
 
     res.json(items.slice(0, limit));

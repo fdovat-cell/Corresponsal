@@ -334,7 +334,10 @@ router.get("/places/news", async (req, res) => {
   }
 
   const { name, country, topic, limit } = parsed.data;
-  const query = [name, country, topic].filter(Boolean).join(" ");
+  // "when:1m" le pide a Google News que priorice el último mes; lo combinamos
+  // con un filtro propio más abajo como respaldo, por si igual devuelve algo viejo.
+  const query = [name, country, topic, "when:1m"].filter(Boolean).join(" ");
+  const NEWS_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
   try {
     const rss = await fetch(
       `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=es-419&gl=US&ceid=US:es-419`,
@@ -342,8 +345,8 @@ router.get("/places/news", async (req, res) => {
     );
     if (!rss.ok) throw new Error(`News request failed: ${rss.status}`);
     const xml = await rss.text();
+    const now = Date.now();
     const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)]
-      .slice(0, limit)
       .map((match) => {
         const item = match[1] ?? "";
         const url = xmlValue(item, "link");
@@ -357,7 +360,10 @@ router.get("/places/news", async (req, res) => {
           topic: topic ?? null,
         };
       })
-      .filter((item) => item.title && item.url);
+      .filter((item) => item.title && item.url)
+      .filter((item) => now - new Date(item.publishedAt).getTime() <= NEWS_MAX_AGE_MS)
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+      .slice(0, limit);
     res.json(items);
   } catch (error) {
     req.log.warn({ err: error, name }, "Place news unavailable");

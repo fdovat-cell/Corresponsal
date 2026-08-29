@@ -402,26 +402,26 @@ router.get("/places/news", async (req, res) => {
   }
 });
 
-// Cada clave interna se corresponde con un filtro real de OpenStreetMap;
-// una misma categoría puede abarcar más de una etiqueta (ej. "bar" incluye
-// bares y pubs, "attraction" incluye miradores y monumentos).
-const NEARBY_CATEGORY_FILTERS: Record<string, string> = {
-  restaurant: `["amenity"="restaurant"]`,
-  bar: `["amenity"~"^(bar|pub)$"]`,
-  attraction: `["tourism"~"^(attraction|viewpoint|artwork|gallery)$"]`,
-  museum: `["tourism"="museum"]`,
-  park: `["leisure"="park"]`,
-  market: `["amenity"="marketplace"]`,
+// Términos de búsqueda por categoría (texto libre, no etiquetas de OSM):
+// se le pasan a LocationIQ/Nominatim igual que una búsqueda de ciudad, pero
+// acotada a un área alrededor del lugar.
+const NEARBY_CATEGORY_TERMS: Record<string, string> = {
+  restaurant: "restaurantes",
+  bar: "bares",
+  attraction: "atracciones turísticas",
+  museum: "museos",
+  park: "parques",
+  market: "mercado",
 };
 
 // --- Cache en memoria para /places/nearby ---
 // Los lugares (bares, museos, etc.) casi no cambian de un día para el otro,
-// así que cachear unas horas evita repetir consultas a Overpass.
+// así que cachear unas horas evita repetir consultas.
 const NEARBY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const nearbyCache = new Map<string, { data: unknown; expiresAt: number }>();
 
-function getNearbyCacheKey(lat: number, lon: number, category: string): string {
-  return `${lat.toFixed(3)}::${lon.toFixed(3)}::${category}`;
+function getNearbyCacheKey(lat: number, lon: number, term: string): string {
+  return `${lat.toFixed(3)}::${lon.toFixed(3)}::${term.toLowerCase()}`;
 }
 
 function getFromNearbyCache(key: string) {
@@ -438,26 +438,32 @@ function setNearbyCache(key: string, data: unknown) {
   nearbyCache.set(key, { data, expiresAt: Date.now() + NEARBY_CACHE_TTL_MS });
 }
 
-// Varios espejos públicos de Overpass: si el principal no responde a tiempo
-// (timeout de red, algo frecuente desde IPs compartidas como las de Render),
-// probamos con el siguiente antes de rendirnos.
-const OVERPASS_MIRRORS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-];
+// Caja de ~5km alrededor del lugar (a mano, sin depender de otro servicio).
+function nearbyViewbox(lat: number, lon: number): string {
+  const delta = 0.05;
+  return `${lon - delta},${lat - delta},${lon + delta},${lat + delta}`;
+}
 
-async function fetchFromOverpass<T>(query: string): Promise<T> {
-  let lastError: unknown;
-  for (const mirror of OVERPASS_MIRRORS) {
+// Mismo proveedor que ya usamos para buscar ciudades: LocationIQ si hay
+// clave configurada, si no Nominatim. Acá lo usamos con "bounded=1" para
+// acotar la búsqueda al área cercana al lugar, en vez de buscar el mundo.
+async function searchNearbyPlaces(lat: number, lon: number, searchText: string, limit: number) {
+  const viewbox = nearbyViewbox(lat, lon);
+  const locationIqKey = process.env.LOCATIONIQ_API_KEY;
+
+  if (locationIqKey) {
     try {
-      return await fetchJson<T>(`${mirror}?data=${encodeURIComponent(query)}`);
+      return await fetchJson<NominatimResult[]>(
+        `https://us1.locationiq.com/v1/search?key=${locationIqKey}&format=json&addressdetails=1&limit=${limit}&accept-language=es&viewbox=${viewbox}&bounded=1&q=${encodeURIComponent(searchText)}`,
+      );
     } catch (error) {
-      lastError = error;
-      console.warn(`Overpass mirror failed (${mirror}), probando el siguiente:`, error);
+      console.warn("LocationIQ nearby search failed, falling back to Nominatim:", error);
     }
   }
-  throw lastError;
+
+  return fetchJson<NominatimResult[]>(
+    `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&accept-language=es&viewbox=${viewbox}&bounded=1&q=${encodeURIComponent(searchText)}`,
+  );
 }
 
 router.get("/places/nearby", async (req, res) => {
@@ -468,33 +474,43 @@ router.get("/places/nearby", async (req, res) => {
   }
 
   const { lat, lon, category } = parsed.data;
-  const cacheKey = getNearbyCacheKey(lat, lon, category);
+  // Búsqueda puntual por nombre (buscador libre), aparte de las categorías
+  // con botón. Se lee directo de la query cruda porque el esquema
+  // compartido no define este campo adicional.
+  const freeText = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const searchText = freeText || NEARBY_CATEGORY_TERMS[category] || NEARBY_CATEGORY_TERMS.restaurant;
+  const resultCategory = freeText ? "búsqueda" : category;
+
+  const cacheKey = getNearbyCacheKey(lat, lon, searchText);
   const cached = getFromNearbyCache(cacheKey);
   if (cached) {
     res.json(cached);
     return;
   }
 
-  const filter = NEARBY_CATEGORY_FILTERS[category] ?? NEARBY_CATEGORY_FILTERS.restaurant;
-  const query = `[out:json];nwr${filter}(around:5000,${lat},${lon});out center 12;`;
   try {
-    const data = await fetchFromOverpass<{ elements?: Array<{ tags?: Record<string, string>; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }>(query);
-    const items = (data.elements ?? [])
-      .filter((element) => element.tags?.name)
-      .map((element) => {
-        const name = element.tags?.name ?? "Lugar sin nombre";
-        const address = element.tags?.["addr:street"] ?? null;
-        // Mandamos a la búsqueda de Google Maps por nombre (y dirección si
-        // la tenemos): ahí el usuario ve reseñas, fotos y horarios reales
-        // sin que nosotros tengamos que integrar una API de reseñas.
-        const searchText = [name, address].filter(Boolean).join(", ");
-        return {
-          name,
-          category,
-          address,
-          mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchText)}`,
-        };
-      });
+    const results = await searchNearbyPlaces(lat, lon, searchText, 12);
+    const items = results.map((result) => {
+      const address = result.address ?? {};
+      const name =
+        address.amenity ||
+        address.shop ||
+        address.tourism ||
+        address.leisure ||
+        result.display_name.split(",")[0]?.trim() ||
+        "Lugar sin nombre";
+      const addressLine = [address.road, address.suburb].filter(Boolean).join(", ") || null;
+      // Mandamos a la búsqueda de Google Maps por nombre (y dirección si la
+      // tenemos): ahí el usuario ve reseñas, fotos y horarios reales sin
+      // que nosotros tengamos que integrar una API de reseñas.
+      const searchQuery = [name, addressLine].filter(Boolean).join(", ");
+      return {
+        name,
+        category: resultCategory,
+        address: addressLine,
+        mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery)}`,
+      };
+    });
     setNearbyCache(cacheKey, items);
     res.json(items);
   } catch (error) {

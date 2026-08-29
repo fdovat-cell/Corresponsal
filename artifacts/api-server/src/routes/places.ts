@@ -414,6 +414,52 @@ const NEARBY_CATEGORY_FILTERS: Record<string, string> = {
   market: `["amenity"="marketplace"]`,
 };
 
+// --- Cache en memoria para /places/nearby ---
+// Los lugares (bares, museos, etc.) casi no cambian de un día para el otro,
+// así que cachear unas horas evita repetir consultas a Overpass.
+const NEARBY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const nearbyCache = new Map<string, { data: unknown; expiresAt: number }>();
+
+function getNearbyCacheKey(lat: number, lon: number, category: string): string {
+  return `${lat.toFixed(3)}::${lon.toFixed(3)}::${category}`;
+}
+
+function getFromNearbyCache(key: string) {
+  const entry = nearbyCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    nearbyCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setNearbyCache(key: string, data: unknown) {
+  nearbyCache.set(key, { data, expiresAt: Date.now() + NEARBY_CACHE_TTL_MS });
+}
+
+// Varios espejos públicos de Overpass: si el principal no responde a tiempo
+// (timeout de red, algo frecuente desde IPs compartidas como las de Render),
+// probamos con el siguiente antes de rendirnos.
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+async function fetchFromOverpass<T>(query: string): Promise<T> {
+  let lastError: unknown;
+  for (const mirror of OVERPASS_MIRRORS) {
+    try {
+      return await fetchJson<T>(`${mirror}?data=${encodeURIComponent(query)}`);
+    } catch (error) {
+      lastError = error;
+      console.warn(`Overpass mirror failed (${mirror}), probando el siguiente:`, error);
+    }
+  }
+  throw lastError;
+}
+
 router.get("/places/nearby", async (req, res) => {
   const parsed = GetNearbyPlacesQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -422,30 +468,35 @@ router.get("/places/nearby", async (req, res) => {
   }
 
   const { lat, lon, category } = parsed.data;
+  const cacheKey = getNearbyCacheKey(lat, lon, category);
+  const cached = getFromNearbyCache(cacheKey);
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
   const filter = NEARBY_CATEGORY_FILTERS[category] ?? NEARBY_CATEGORY_FILTERS.restaurant;
   const query = `[out:json];nwr${filter}(around:5000,${lat},${lon});out center 12;`;
   try {
-    const data = await fetchJson<{ elements?: Array<{ tags?: Record<string, string>; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }>(
-      `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
-    );
-    res.json(
-      (data.elements ?? [])
-        .filter((element) => element.tags?.name)
-        .map((element) => {
-          const name = element.tags?.name ?? "Lugar sin nombre";
-          const address = element.tags?.["addr:street"] ?? null;
-          // Mandamos a la búsqueda de Google Maps por nombre (y dirección si
-          // la tenemos): ahí el usuario ve reseñas, fotos y horarios reales
-          // sin que nosotros tengamos que integrar una API de reseñas.
-          const searchText = [name, address].filter(Boolean).join(", ");
-          return {
-            name,
-            category,
-            address,
-            mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchText)}`,
-          };
-        }),
-    );
+    const data = await fetchFromOverpass<{ elements?: Array<{ tags?: Record<string, string>; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }>(query);
+    const items = (data.elements ?? [])
+      .filter((element) => element.tags?.name)
+      .map((element) => {
+        const name = element.tags?.name ?? "Lugar sin nombre";
+        const address = element.tags?.["addr:street"] ?? null;
+        // Mandamos a la búsqueda de Google Maps por nombre (y dirección si
+        // la tenemos): ahí el usuario ve reseñas, fotos y horarios reales
+        // sin que nosotros tengamos que integrar una API de reseñas.
+        const searchText = [name, address].filter(Boolean).join(", ");
+        return {
+          name,
+          category,
+          address,
+          mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchText)}`,
+        };
+      });
+    setNearbyCache(cacheKey, items);
+    res.json(items);
   } catch (error) {
     req.log.warn({ err: error, category }, "Nearby places unavailable");
     res.status(502).json({ error: "No se pudieron buscar lugares cercanos." });

@@ -402,6 +402,18 @@ router.get("/places/news", async (req, res) => {
   }
 });
 
+// Cada clave interna se corresponde con un filtro real de OpenStreetMap;
+// una misma categoría puede abarcar más de una etiqueta (ej. "bar" incluye
+// bares y pubs, "attraction" incluye miradores y monumentos).
+const NEARBY_CATEGORY_FILTERS: Record<string, string> = {
+  restaurant: `["amenity"="restaurant"]`,
+  bar: `["amenity"~"^(bar|pub)$"]`,
+  attraction: `["tourism"~"^(attraction|viewpoint|artwork|gallery)$"]`,
+  museum: `["tourism"="museum"]`,
+  park: `["leisure"="park"]`,
+  market: `["amenity"="marketplace"]`,
+};
+
 router.get("/places/nearby", async (req, res) => {
   const parsed = GetNearbyPlacesQueryParams.safeParse(req.query);
   if (!parsed.success) {
@@ -410,8 +422,8 @@ router.get("/places/nearby", async (req, res) => {
   }
 
   const { lat, lon, category } = parsed.data;
-  const amenity = category === "restaurant" ? "restaurant" : category;
-  const query = `[out:json];nwr["amenity"="${encodeURIComponent(amenity)}"](around:5000,${lat},${lon});out center 12;`;
+  const filter = NEARBY_CATEGORY_FILTERS[category] ?? NEARBY_CATEGORY_FILTERS.restaurant;
+  const query = `[out:json];nwr${filter}(around:5000,${lat},${lon});out center 12;`;
   try {
     const data = await fetchJson<{ elements?: Array<{ tags?: Record<string, string>; lat?: number; lon?: number; center?: { lat: number; lon: number } }> }>(
       `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
@@ -420,12 +432,17 @@ router.get("/places/nearby", async (req, res) => {
       (data.elements ?? [])
         .filter((element) => element.tags?.name)
         .map((element) => {
-          const point = element.center ?? { lat: element.lat ?? lat, lon: element.lon ?? lon };
+          const name = element.tags?.name ?? "Lugar sin nombre";
+          const address = element.tags?.["addr:street"] ?? null;
+          // Mandamos a la búsqueda de Google Maps por nombre (y dirección si
+          // la tenemos): ahí el usuario ve reseñas, fotos y horarios reales
+          // sin que nosotros tengamos que integrar una API de reseñas.
+          const searchText = [name, address].filter(Boolean).join(", ");
           return {
-            name: element.tags?.name ?? "Lugar sin nombre",
+            name,
             category,
-            address: element.tags?.["addr:street"] ?? null,
-            mapUrl: `https://www.openstreetmap.org/?mlat=${point.lat}&mlon=${point.lon}#map=18/${point.lat}/${point.lon}`,
+            address,
+            mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchText)}`,
           };
         }),
     );
